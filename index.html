@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fretboard Atlas</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Fretboard Atlas</h1>
+  </header>
+
+  <section class="controls">
+    <label>Key <select id="key"></select></label>
+    <label>Scale <select id="scale"></select></label>
+    <label>Tuning <select id="tuning"></select></label>
+    <label>Frets
+      <select id="frets">
+        <option>21</option>
+        <option selected>22</option>
+        <option>24</option>
+      </select>
+    </label>
+    <label>Map
+      <select id="map">
+        <option value="full">Entire fretboard</option>
+        <option value="position">Across (fret window, all strings)</option>
+        <option value="strings">Along (selected strings, all frets)</option>
+      </select>
+    </label>
+    <label>Labels
+      <select id="labels">
+        <option value="note">Note names</option>
+        <option value="degree">Scale degrees</option>
+        <option value="none">None</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" id="octave"> Show octave</label>
+    <label class="check"><input type="checkbox" id="ghost" checked> Dim notes outside map</label>
+  </section>
+
+  <section class="controls map-options" id="position-options">
+    <label>Start fret <input type="number" id="start-fret" min="0" value="5"></label>
+    <label>Span <input type="number" id="span" min="1" value="4"></label>
+  </section>
+
+  <section class="controls map-options" id="string-options"></section>
+
+  <main>
+    <svg id="fretboard" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="legend"></div>
+  </main>
+
+  <script src="theory.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

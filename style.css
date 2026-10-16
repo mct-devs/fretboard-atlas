@@ -1,0 +1,97 @@
+:root {
+  --bg: #1d1f24;
+  --panel: #2a2d34;
+  --text: #e8e6e3;
+  --muted: #9aa0a6;
+  --accent: #2e86ab;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 1rem 1.5rem;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  background: var(--panel);
+  border-radius: 8px;
+}
+
+.controls label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.controls select,
+.controls input[type="number"] {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 0.3rem 0.4rem;
+  font-size: 0.9rem;
+}
+
+.controls input[type="number"] { width: 4rem; }
+
+.controls .check { color: var(--text); }
+
+.map-options[hidden] { display: none; }
+
+main {
+  overflow-x: auto;
+}
+
+#fretboard {
+  display: block;
+  width: 100%;
+  min-width: 900px;
+  height: auto;
+}
+
+#fretboard text {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  dominant-baseline: central;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+#legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  padding: 0.5rem 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+#legend span {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+#legend i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
