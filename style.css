@@ -16,10 +16,21 @@ body {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
 h1 {
   margin: 0 0 1rem;
   font-size: 1.4rem;
   font-weight: 600;
+}
+
+.version {
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
 .controls {
