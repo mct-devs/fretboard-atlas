@@ -11,6 +11,7 @@
     stringGap: 40,
     bottom: 44,
     openNoteX: 62,
+    markerX: 38,  // open/unplayed string markers in chord shapes
     maxRadius: 13,
   };
 
@@ -21,6 +22,7 @@
     string: "#d8d2c4",
     inlay: "#e9e1cf",
     window: "rgba(46, 134, 171, 0.18)",
+    noodle: "rgba(245, 185, 66, 0.4)",
     rootRing: "#ffffff",
     label: "#ffffff",
     muted: "#9aa0a6",
@@ -37,11 +39,27 @@
     7: "#6b7280",
   };
 
+  // "Several chords" overlay: one color per chord in list order, offered for
+  // lists this short, showing shapes within this many frets of the position.
+  const OVERLAY_COLORS = ["#ff6b6b", "#ffa94d", "#ffd43b", "#69db7c", "#4dabf7", "#b197fc", "#f783ac"];
+  const MAX_OVERLAY_CHORDS = OVERLAY_COLORS.length;
+  const OVERLAY_REACH = 2;
+
   const $ = (id) => document.getElementById(id);
   const svg = $("fretboard");
 
   // Indexes into the tuning array (0 = lowest-pitched string).
   const selectedStrings = new Set([0, 1]);
+
+  // Which chord shape is showing. Goes back to the first shape whenever the
+  // chord or anything that changes its shapes changes.
+  let shapeIndex = 0;
+  let shapeCount = 0;
+  let shapeSource = "";
+  let overlayStops = [];
+
+  // Indexes into the chord list for "Several chords". Starts as I, IV, V.
+  const overlaySelected = new Set([0, 3, 4]);
 
   function fillSelect(select, values, selected) {
     for (const v of values) {
@@ -52,19 +70,15 @@
     }
   }
 
-  function el(tag, attrs, text) {
+  function svgNode(tag, attrs, text) {
     const node = document.createElementNS(SVG_NS, tag);
     for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
     if (text !== undefined) node.textContent = text;
-    svg.appendChild(node);
     return node;
   }
 
-  function tspan(attrs, text) {
-    const node = document.createElementNS(SVG_NS, "tspan");
-    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
-    node.textContent = text;
-    return node;
+  function el(tag, attrs, text) {
+    return svg.appendChild(svgNode(tag, attrs, text));
   }
 
   // Don't write the clamped value back: that fights the user mid-typing.
@@ -77,6 +91,9 @@
     return {
       key: $("key").value,
       scale: $("scale").value,
+      chord: $("chord").value,
+      depth: $("depth").value,
+      tuningName: $("tuning").value,
       tuning: Theory.tuningStrings($("tuning").value),
       frets,
       map: $("map").value,
@@ -113,6 +130,115 @@
     }
   }
 
+  // Option values are indexes into the chord list, or "all". Keeps the same
+  // position in the list (e.g. the ii chord) when the key, scale or depth
+  // changes.
+  function buildChordOptions() {
+    const scaleName = $("scale").value;
+    const select = $("chord");
+    const previous = select.value;
+    const scale = Theory.buildScale($("key").value, scaleName);
+    const chords = Theory.chordsForScale(scaleName, scale, $("depth").value);
+    select.replaceChildren();
+    const canOverlay = chords.length > 1 && chords.length <= MAX_OVERLAY_CHORDS;
+    if (canOverlay) select.appendChild(new Option("Several chords", "all"));
+    let group = select;
+    chords.forEach((c, i) => {
+      if (c.group && c.group !== group.label) {
+        group = select.appendChild(document.createElement("optgroup"));
+        group.label = c.group;
+      }
+      group.appendChild(new Option(c.label, i));
+    });
+    if (!chords.length) select.appendChild(new Option("None for this scale", ""));
+    select.disabled = !chords.length;
+    select.value = previous;
+    if (select.selectedIndex < 0) select.value = chords.length ? "0" : "";
+    $("depth-label").hidden = Theory.chordStyle(scaleName) !== "stacked";
+
+    const picks = $("overlay-picks");
+    picks.replaceChildren();
+    if (!canOverlay) return;
+    chords.forEach((c, i) => {
+      const label = document.createElement("label");
+      label.className = "check";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = overlaySelected.has(i);
+      box.addEventListener("change", () => {
+        box.checked ? overlaySelected.add(i) : overlaySelected.delete(i);
+        render();
+      });
+      const swatch = document.createElement("i");
+      swatch.style.background = OVERLAY_COLORS[i];
+      label.append(box, swatch, c.label);
+      picks.appendChild(label);
+    });
+  }
+
+  // Shapes to draw as [{ name, frets, color }], where frets has one entry per
+  // string (null = not played). A single chord steps through its own shapes.
+  // "Several chords" steps through neck positions instead, showing each
+  // checked chord's shape near that position; chords with nothing nearby are
+  // left out.
+  function currentShapes(st, scale) {
+    const chords = Theory.chordsForScale(st.scale, scale, st.depth);
+    const all = st.chord === "all";
+    $("overlay-picks").hidden = !all;
+    const picked = all
+      ? chords.map((c, i) => ({ ...c, color: OVERLAY_COLORS[i] })).filter((_, i) => overlaySelected.has(i))
+      : [chords[Number(st.chord)]].filter(Boolean).map((c) => ({ ...c, color: COLORS.noodle }));
+    const shapesPer = picked.map((c) => Theory.chordShapes(c, scale, st.tuning, st.frets));
+    const stops = all ? [...new Set(shapesPer.flat().map((sh) => sh.position))].sort((a, b) => a - b) : shapesPer[0] ?? [];
+
+    const source = [st.key, st.scale, st.chord, st.depth, st.tuningName, st.frets].join("|");
+    if (source !== shapeSource) {
+      shapeSource = source;
+      shapeIndex = 0;
+    } else if (all && overlayStops[shapeIndex] !== undefined) {
+      // Checking or unchecking a chord changes the stops; stay near the same fret.
+      const was = overlayStops[shapeIndex];
+      shapeIndex = stops.reduce((best, pos, i) => (Math.abs(pos - was) < Math.abs(stops[best] - was) ? i : best), 0);
+    }
+    if (all) overlayStops = stops;
+    shapeCount = stops.length;
+    $("prev-shape").disabled = $("next-shape").disabled = stops.length < 2;
+
+    const info = $("shape-info");
+    if (all && !picked.length) info.textContent = "Check chords to show";
+    else if (!picked.length) info.textContent = "";
+    else if (!stops.length) info.textContent = "No playable shapes";
+    else if (!all) info.textContent = `Shape ${shapeIndex + 1} of ${stops.length}`;
+    else {
+      const pos = stops[shapeIndex];
+      info.textContent = `${pos === 0 ? "Open position" : `Fret ${pos}`} (${shapeIndex + 1} of ${stops.length})`;
+    }
+    if (!stops.length) return [];
+
+    if (!all) return [{ name: picked[0].name, frets: stops[shapeIndex].frets, color: picked[0].color }];
+    const pos = stops[shapeIndex];
+    return picked.flatMap((c, i) => {
+      const near = shapesPer[i]
+        .filter((sh) => Math.abs(sh.position - pos) <= OVERLAY_REACH)
+        .sort((a, b) => Math.abs(a.position - pos) - Math.abs(b.position - pos))[0];
+      return near ? [{ name: c.name, frets: near.frets, color: c.color }] : [];
+    });
+  }
+
+  // Smooth curve through the points (Catmull-Rom converted to cubic Béziers).
+  function smoothPath(points) {
+    let d = `M ${points[0]}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[i - 1] ?? points[i];
+      const [p1, p2] = [points[i], points[i + 1]];
+      const p3 = points[i + 2] ?? p2;
+      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+      const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+      d += ` C ${c1} ${c2} ${p2}`;
+    }
+    return d;
+  }
+
   function render() {
     const st = readState();
     const n = st.frets;
@@ -122,6 +248,11 @@
 
     $("position-options").hidden = st.map !== "position";
     $("string-options").hidden = st.map !== "strings";
+    $("chord-options").hidden = st.map !== "chord";
+
+    const scale = Theory.buildScale(st.key, st.scale);
+    const shapes = st.map === "chord" ? currentShapes(st, scale) : [];
+    const overlay = st.chord === "all";
 
     svg.replaceChildren();
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
@@ -143,6 +274,7 @@
     const inMap = (s, f) => {
       if (st.map === "position") return f >= st.startFret && f <= windowEnd;
       if (st.map === "strings") return selectedStrings.has(s);
+      if (st.map === "chord") return shapes.some((sh) => sh.frets[s] === f);
       return true;
     };
 
@@ -178,7 +310,24 @@
       el("text", { x: 18, y, fill: COLORS.muted, "font-size": 13 }, st.tuning[s].name);
     }
 
-    const scale = Theory.buildScale(st.key, st.scale);
+    // Overlaid noodles are thin and nudged sideways from each other so ones
+    // sharing a note stay distinguishable.
+    shapes.forEach((sh, i) => {
+      const dx = overlay ? (i - (shapes.length - 1) / 2) * 3 : 0;
+      const points = sh.frets.flatMap((f, s) => (f === null ? [] : [[noteX(f) + dx, stringY(s)]]));
+      el("path", {
+        d: smoothPath(points), fill: "none", stroke: sh.color,
+        "stroke-width": overlay ? 4 : LAYOUT.maxRadius * 2 + 8, "stroke-linecap": "round", "stroke-linejoin": "round",
+      });
+    });
+    // Open/unplayed markers would contradict each other across overlaid chords.
+    if (shapes.length === 1) {
+      shapes[0].frets.forEach((f, s) => {
+        if (f === null) el("text", { x: LAYOUT.markerX, y: stringY(s), fill: COLORS.label, "font-size": 15 }, "×");
+        else if (f === 0) el("text", { x: LAYOUT.markerX, y: stringY(s), fill: COLORS.label, "font-size": 13 }, "o");
+      });
+    }
+
     const octavesShown = new Set();
     for (let s = 0; s < numStrings; s++) {
       for (let f = 0; f <= n; f++) {
@@ -192,51 +341,62 @@
         const r = f === 0 ? LAYOUT.maxRadius : Math.min(LAYOUT.maxRadius, (fretX(f) - fretX(f - 1)) / 2 - 1.5);
         const opacity = active ? 1 : 0.2;
         const fill = OCTAVE_COLORS[note.octave];
-        if (note.isRoot) {
-          // Inset the ring so roots take up the same space as other notes.
-          el("circle", { cx, cy, r: r - 1.5, fill, stroke: COLORS.rootRing, "stroke-width": 3, opacity });
-        } else {
-          el("circle", { cx, cy, r, fill, opacity });
-        }
+        // Inset the root ring so roots take up the same space as other notes.
+        const dot = note.isRoot
+          ? el("circle", { cx, cy, r: r - 1.5, fill, stroke: COLORS.rootRing, "stroke-width": 3, opacity })
+          : el("circle", { cx, cy, r, fill, opacity });
+        dot.appendChild(svgNode("title", {}, `${note.name}${note.octave} · ${note.degree} · ${note.hz.toFixed(2)} Hz`));
         if (active) octavesShown.add(note.octave);
 
-        const label = st.labels === "note" ? note.name : st.labels === "degree" ? note.degree : "";
+        const label = { note: note.name, degree: note.degree, hz: String(Math.round(note.hz)) }[st.labels] ?? "";
         if (label) {
           const sub = st.labels === "note" && st.showOctave ? String(note.octave) : "";
-          const fontSize = [...label].length + sub.length > 2 ? 10 : 11.5;
+          const chars = [...label].length + sub.length;
+          const fontSize = chars <= 2 ? 11.5 : chars === 3 ? 10 : 8.5;
           const text = el("text", { x: cx, y: cy, fill: COLORS.label, "font-size": fontSize, "font-weight": 600, opacity });
-          text.appendChild(tspan({}, label));
+          text.appendChild(svgNode("tspan", {}, label));
           // dy rather than baseline-shift, which Firefox doesn't support.
-          if (sub) text.appendChild(tspan({ dy: fontSize * 0.3, "font-size": fontSize * 0.7 }, sub));
+          if (sub) text.appendChild(svgNode("tspan", { dy: fontSize * 0.3, "font-size": fontSize * 0.7 }, sub));
         }
       }
     }
 
-    renderLegend([...octavesShown].sort());
+    renderLegend([...octavesShown].sort(), overlay ? shapes : []);
   }
 
-  function renderLegend(octaves) {
+  function renderLegend(octaves, overlaid) {
     const legend = $("legend");
     legend.replaceChildren();
-    const item = (color, text, ring) => {
+    const item = (color, text, ring, line) => {
       const span = document.createElement("span");
       const swatch = document.createElement("i");
       swatch.style.background = color;
       if (ring) swatch.style.boxShadow = `inset 0 0 0 2.5px ${COLORS.rootRing}`;
+      if (line) swatch.className = "line";
       span.append(swatch, text);
       legend.appendChild(span);
     };
     item(COLORS.muted, "Root", true);
     for (const o of octaves) item(OCTAVE_COLORS[o], `Octave ${o}`);
+    for (const sh of overlaid) item(sh.color, sh.name, false, true);
   }
 
   fillSelect($("key"), Theory.KEYS, "C");
   fillSelect($("scale"), Object.keys(Theory.SCALES), "Major (Ionian)");
   fillSelect($("tuning"), Object.keys(Theory.TUNINGS));
   buildStringOptions();
+  buildChordOptions();
 
   $("tuning").addEventListener("change", buildStringOptions);
-  for (const id of ["key", "scale", "tuning", "frets", "map", "labels", "octave", "ghost", "start-fret", "span"]) {
+  // Registered before the render listeners so the chord list is current when render runs.
+  for (const id of ["key", "scale", "depth"]) $(id).addEventListener("input", buildChordOptions);
+  for (const [id, step] of [["prev-shape", -1], ["next-shape", 1]]) {
+    $(id).addEventListener("click", () => {
+      shapeIndex = (shapeIndex + step + shapeCount) % shapeCount;
+      render();
+    });
+  }
+  for (const id of ["key", "scale", "chord", "depth", "tuning", "frets", "map", "labels", "octave", "ghost", "start-fret", "span"]) {
     $(id).addEventListener("input", render);
   }
 

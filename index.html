@@ -9,7 +9,7 @@
 <body>
   <header>
     <h1>Fretboard Atlas</h1>
-    <span class="version">v1.0.0</span>
+    <span class="version">v1.1.0</span>
   </header>
 
   <section class="controls">
@@ -28,12 +28,14 @@
         <option value="full">Entire fretboard</option>
         <option value="position">Across (fret window, all strings)</option>
         <option value="strings">Along (selected strings, all frets)</option>
+        <option value="chord">Chord shape</option>
       </select>
     </label>
     <label>Labels
       <select id="labels">
         <option value="note">Note names</option>
         <option value="degree">Scale degrees</option>
+        <option value="hz">Frequency (Hz)</option>
         <option value="none">None</option>
       </select>
     </label>
@@ -47,6 +49,24 @@
   </section>
 
   <section class="controls map-options" id="string-options"></section>
+
+  <section class="controls map-options" id="chord-options">
+    <label>Chord <select id="chord"></select></label>
+    <label id="depth-label">Depth
+      <select id="depth">
+        <option value="3">Triad</option>
+        <option value="4">7th</option>
+        <option value="5">9th</option>
+        <option value="fit">All that fit</option>
+      </select>
+    </label>
+    <span class="shape-nav">
+      <button type="button" id="prev-shape" aria-label="Previous shape">◀</button>
+      <span id="shape-info"></span>
+      <button type="button" id="next-shape" aria-label="Next shape">▶</button>
+    </span>
+    <span class="overlay-picks" id="overlay-picks"></span>
+  </section>
 
   <main>
     <svg id="fretboard" xmlns="http://www.w3.org/2000/svg"></svg>

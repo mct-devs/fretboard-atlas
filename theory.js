@@ -23,6 +23,38 @@ const Theory = (() => {
     "Chromatic":            null,  // degrees chosen per key, see chromaticDegrees()
   };
 
+  // Chords offered for scales that aren't seven notes (pentatonic, blues), and
+  // for seven-note scales at the "All that fit" depth: every one whose tones
+  // all fall in the scale. Tones are intervals above the chord root, written
+  // like scale degrees.
+  const FIT_CHORDS = [
+    { suffix: "",     tones: ["1", "3", "5"] },
+    { suffix: "m",    tones: ["1", "b3", "5"] },
+    { suffix: "dim",  tones: ["1", "b3", "b5"] },
+    { suffix: "aug",  tones: ["1", "3", "#5"] },
+    { suffix: "sus2", tones: ["1", "2", "5"] },
+    { suffix: "sus4", tones: ["1", "4", "5"] },
+    { suffix: "6",    tones: ["1", "3", "5", "6"] },
+    { suffix: "m6",   tones: ["1", "b3", "5", "6"] },
+    { suffix: "7",    tones: ["1", "3", "5", "b7"] },
+    { suffix: "maj7", tones: ["1", "3", "5", "7"] },
+    { suffix: "m7",   tones: ["1", "b3", "5", "b7"] },
+    { suffix: "m7♭5", tones: ["1", "b3", "b5", "b7"] },
+    { suffix: "dim7", tones: ["1", "b3", "b5", "bb7"] },
+    { suffix: "7♯5",  tones: ["1", "3", "#5", "b7"] },
+  ];
+
+  // Seven-note scales build one chord per degree by stacking thirds from the
+  // scale. Intervals here are those of a major 9th chord.
+  const STACK = [{ num: 1, semis: 0 }, { num: 3, semis: 4 }, { num: 5, semis: 7 }, { num: 7, semis: 11 }, { num: 9, semis: 14 }];
+  const TRIAD_SUFFIX = { "3 5": "", "b3 5": "m", "b3 b5": "dim", "3 #5": "aug" };
+  const SEVENTH_SUFFIX = {
+    "3 5 7": "maj7", "3 5 b7": "7", "b3 5 b7": "m7", "b3 b5 b7": "m7♭5",
+    "b3 b5 bb7": "dim7", "b3 5 7": "m(maj7)", "3 #5 7": "maj7♯5", "3 #5 b7": "7♯5",
+  };
+  const NINTH_SUFFIX = { "maj7": "maj9", "7": "9", "m7": "m9", "m(maj7)": "m(maj9)", "m7♭5": "m9♭5" };
+  const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII"];
+
   const FLAT_KEYS = new Set(["F", "Db", "Eb", "Gb", "Ab", "Bb"]);
   const CHROMATIC_LABELS = new Set(["1", "#1", "b2", "2", "#2", "b3", "3", "4", "#4", "b5", "5", "#5", "b6", "6", "#6", "b7", "7"]);
 
@@ -53,6 +85,10 @@ const Theory = (() => {
     const m = deg.match(/^([b#]*)(\d+)$/);
     const num = Number(m[2]);
     return { num, semis: MAJOR_SEMIS[num - 1] + parseAccidental(m[1]) };
+  }
+
+  function prettyDegree(deg) {
+    return deg.replaceAll("b", "♭").replaceAll("#", "♯");
   }
 
   function accidentalSymbol(acc) {
@@ -114,7 +150,129 @@ const Theory = (() => {
     const info = scale.byInterval.get(mod(midi - scale.rootPc, 12));
     if (!info) return null;
     const octave = Math.floor((midi - info.acc) / 12) - 1;
-    return { ...info, midi, octave, isRoot: info.degree === "1" };
+    const hz = 440 * 2 ** ((midi - 69) / 12);
+    return { ...info, midi, octave, hz, isRoot: info.degree === "1" };
+  }
+
+  // "stacked" for seven-note scales, "fit" for the others, null when no
+  // chords are offered (chromatic).
+  function chordStyle(scaleName) {
+    const degrees = SCALES[scaleName];
+    if (!degrees) return null;
+    return degrees.length === 7 ? "stacked" : "fit";
+  }
+
+  function stackedSuffix(labels) {
+    const fallback = `(${labels.slice(1).map(prettyDegree).join(" ")})`;
+    const triad = TRIAD_SUFFIX[labels.slice(1, 3).join(" ")];
+    if (labels.length === 3) return triad ?? fallback;
+    const seventh = SEVENTH_SUFFIX[labels.slice(1, 4).join(" ")];
+    if (seventh === undefined) return fallback;
+    if (labels.length === 4) return seventh;
+    return (labels[4] === "9" && NINTH_SUFFIX[seventh]) || `${seventh}(${prettyDegree(labels[4])})`;
+  }
+
+  // Each chord's tones are keyed by semitones above the key root, like
+  // scale.byInterval. depth only applies to seven-note scales: the number of
+  // stacked thirds (3 = triad, 4 = 7th, 5 = 9th), or "fit" for every chord
+  // type that fits. Fitted chords carry a group (their root) for display.
+  function chordsForScale(scaleName, scale, depth) {
+    const notes = [...scale.byInterval].sort((a, b) => a[0] - b[0]);
+    const style = chordStyle(scaleName);
+
+    if (style === "stacked" && depth !== "fit") {
+      return notes.map(([rootSemis, root], i) => {
+        const tones = new Map();
+        const labels = [];
+        for (let k = 0; k < Number(depth); k++) {
+          const semis = notes[(i + 2 * k) % notes.length][0];
+          const offset = mod(semis - rootSemis - STACK[k].semis + 6, 12) - 6;
+          const label = (offset < 0 ? "b" : "#").repeat(Math.abs(offset)) + STACK[k].num;
+          labels.push(label);
+          // A 9th chord has more tones than a hand comfortably covers, so its
+          // shapes may leave out the natural 5th.
+          tones.set(semis, { label: prettyDegree(label), optional: depth > 4 && label === "5" });
+        }
+        const name = root.name + stackedSuffix(labels);
+        const [, acc, num] = root.degree.match(/^(\D*)(\d+)$/);
+        const numeral = labels[1] === "b3" ? ROMAN[num - 1].toLowerCase() : ROMAN[num - 1];
+        return { name, label: `${acc}${numeral} · ${name}`, tones };
+      });
+    }
+
+    if (style) {
+      const chords = [];
+      for (const [rootSemis, root] of notes) {
+        for (const { suffix, tones: degrees } of FIT_CHORDS) {
+          const tones = new Map();
+          for (const deg of degrees) {
+            const semis = mod(rootSemis + parseDegree(deg).semis, 12);
+            if (!scale.byInterval.has(semis)) break;
+            tones.set(semis, { label: prettyDegree(deg), optional: false });
+          }
+          if (tones.size === degrees.length) {
+            chords.push({ name: root.name + suffix, label: root.name + suffix, group: `${root.degree} · ${root.name}`, tones });
+          }
+        }
+      }
+      return chords;
+    }
+
+    return [];
+  }
+
+  // Playable shapes for a chord as { frets, position }. frets has one entry
+  // per string (lowest first): a fret number, or null for a string that isn't
+  // played. position is the lowest fretted fret, or 0 for open shapes. Strings are only left
+  // unplayed on the bass side so every shape can be strummed, and the lowest
+  // played note is the root. Keeps the fullest shape at each neck position,
+  // ordered up the neck.
+  function chordShapes(chord, scale, tuning, numFrets) {
+    const MAX_SPAN = 3;            // frets between lowest and highest fretted notes
+    const MAX_OPEN_POSITION = 4;   // open strings only combine with low shapes
+    const tones = [...chord.tones.values()];
+    const root = tones.find((t) => t.label === "1");
+    const toneAt = (s, f) => chord.tones.get(mod(tuning[s].midi + f - scale.rootPc, 12));
+    const best = new Map();
+    const frets = [];
+
+    function consider(lo, open) {
+      const played = frets.flatMap((f, s) => (f === null ? [] : [{ f, tone: toneAt(s, f) }]));
+      if (played.length < 3) return;
+      const present = new Set(played.map((p) => p.tone));
+      const missing = tones.filter((t) => !present.has(t));
+      if (missing.some((t) => !t.optional)) return;
+      if (played[0].tone !== root) return;
+      // Fingers beyond four mean the index finger barres the lowest fret.
+      if (played.filter((p) => p.f > lo).length > 3) return;
+
+      const position = open ? 0 : lo;
+      const fretted = played.filter((p) => p.f > 0).length;
+      const score = played.length * 2 - missing.length * 3 - fretted * 0.1;
+      if (!best.has(position) || score > best.get(position).score) {
+        best.set(position, { frets: [...frets], score });
+      }
+    }
+
+    function search(s, lo, hi, open) {
+      if (s === tuning.length) return consider(lo, open);
+      if (s === 0 || frets[s - 1] === null) {
+        frets[s] = null;
+        search(s + 1, lo, hi, open);
+      }
+      for (let f = 0; f <= numFrets; f++) {
+        if (!toneAt(s, f)) continue;
+        const nlo = f > 0 ? Math.min(lo, f) : lo;
+        const nhi = f > 0 ? Math.max(hi, f) : hi;
+        const nopen = open || f === 0;
+        if (nhi - nlo > MAX_SPAN || (nopen && nhi > MAX_OPEN_POSITION)) continue;
+        frets[s] = f;
+        search(s + 1, nlo, nhi, nopen);
+      }
+    }
+
+    search(0, Infinity, -Infinity, false);
+    return [...best].sort((a, b) => a[0] - b[0]).map(([position, v]) => ({ frets: v.frets, position }));
   }
 
   // Parses names like "Eb2" into the open-string pitch and its display name.
@@ -130,7 +288,7 @@ const Theory = (() => {
     });
   }
 
-  return { KEYS, SCALES, TUNINGS, buildScale, noteAt, tuningStrings };
+  return { KEYS, SCALES, TUNINGS, buildScale, noteAt, chordStyle, chordsForScale, chordShapes, tuningStrings };
 })();
 
 if (typeof module !== "undefined") module.exports = Theory;

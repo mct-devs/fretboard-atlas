@@ -53,7 +53,8 @@ h1 {
 }
 
 .controls select,
-.controls input[type="number"] {
+.controls input[type="number"],
+.controls button {
   background: var(--bg);
   color: var(--text);
   border: 1px solid #444;
@@ -66,7 +67,32 @@ h1 {
 
 .controls .check { color: var(--text); }
 
-.map-options[hidden] { display: none; }
+.controls button { cursor: pointer; }
+.controls button:disabled { opacity: 0.4; cursor: default; }
+
+.shape-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.overlay-picks {
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  gap: 0.5rem 1.25rem;
+}
+
+.overlay-picks i {
+  width: 18px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.map-options[hidden],
+.controls [hidden] { display: none; }
 
 main {
   overflow-x: auto;
@@ -105,4 +131,10 @@ main {
   width: 14px;
   height: 14px;
   border-radius: 50%;
+}
+
+#legend i.line {
+  width: 18px;
+  height: 4px;
+  border-radius: 2px;
 }

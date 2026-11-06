@@ -11,9 +11,10 @@ An interactive guitar fretboard for learning scales. Pick a key and scale, choos
   - **Entire fretboard:** every scale note on the whole neck.
   - **Across:** a fret window (start fret and span) across all strings, for practising a position.
   - **Along:** selected strings across all frets, for moving up and down the neck.
+  - **Chord shape:** playable chord voicings from the scale, stepped through up the neck. Seven-note scales give one chord per degree (triad, 7th, or 9th); pentatonic and blues scales, or the "All that fit" depth, list every chord type whose notes are all in the scale. "Several chords" overlays chosen chords (I, IV, V by default) in their own colours at each neck position.
 - **Dim notes outside map:** keeps the rest of the neck visible for context.
 - **Octave colours:** each octave has its own colour, so you can see where a scale crosses into the next octave. Root notes are marked with a white ring.
-- **Labels:** note names, scale degrees (1, ♭3, 5…), or none for self-testing. With note names, you can optionally add octave numbers as subscripts in scientific pitch notation (middle C = C₄).
+- **Labels:** note names, scale degrees (1, ♭3, 5…), frequency in Hz (rounded, A₄ = 440 Hz), or none for self-testing. Hovering over any note shows its name, degree, and exact frequency. With note names, you can optionally add octave numbers as subscripts in scientific pitch notation (middle C = C₄).
 - **Correct spelling:** notes are spelled for the key (B♭ in F major, E♯ in C♯ major), and octave numbers follow the letter name (B♯₃ sounds as C₄).
 - **Tunings:** Standard, Drop D, Half-step down, DADGAD, and Open G.
 - **Fret count:** 21, 22, or 24 frets, with realistic fret spacing.
@@ -29,7 +30,7 @@ There's no build step or server. Open `index.html` in a browser.
 | `index.html` | Page layout and controls |
 | `style.css` | Styling |
 | `app.js` | Fretboard rendering (SVG) and UI wiring |
-| `theory.js` | Music theory: scales, note spelling, octaves, tunings |
+| `theory.js` | Music theory: scales, note spelling, octaves, tunings, chords and chord shapes |
 
 `theory.js` has no DOM dependencies and can be loaded in Node for testing:
 
